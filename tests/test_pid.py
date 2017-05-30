@@ -295,3 +295,25 @@ def test_pid_custom_term_signal():
 #     #
 #     with pid.PidFile():
 #         assert signal.getsignal(signal.SIGTERM) == None
+
+def test_pid_clean():
+    import time
+
+    with pid.PidFile() as _pid:
+        p = pid.PidFile()
+        assert p.clean() == pid.PID_CHECK_SAMEPID
+
+    with pid.PidFile() as _pid:
+        p = pid.PidFile()
+        p.setup()
+        p.pid = _pid.pid + 1
+        assert p.clean() is None
+
+    with pid.PidFile() as _pid:
+        p = pid.PidFile()
+        p.setup()
+        p.pid = _pid.pid + 1
+        time.sleep(1)
+        assert os.path.isfile(_pid.filename) is True
+        assert p.clean(timeout=1) is pid.PID_CHECK_CLEAN
+        assert os.path.isfile(_pid.filename) is False

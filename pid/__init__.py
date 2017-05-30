@@ -11,6 +11,7 @@ import tempfile
 __version__ = "2.1.1"
 
 DEFAULT_PID_DIR = "/var/run/"
+PID_CHECK_CLEAN = "PID_CHECK_CLEAN"
 PID_CHECK_EMPTY = "PID_CHECK_EMPTY"
 PID_CHECK_NOFILE = "PID_CHECK_NOFILE"
 PID_CHECK_SAMEPID = "PID_CHECK_SAMEPID"
@@ -154,6 +155,44 @@ class PidFile(object):
             return PID_CHECK_NOFILE
         else:
             return inner_check(self.fh)
+
+    def clean(self, timeout=600):
+        import time
+        import psutil
+        self.setup()
+
+        if self.fh:
+            fh = self.fh
+        else:
+            if self.filename and os.path.isfile(self.filename):
+                fh = open(self.filename, "r")
+            else:
+                return PID_CHECK_NOFILE
+
+        try:
+            fh.seek(0)
+            pid_str = fh.read(16).split("\n", 1)[0].strip()
+            if not pid_str:
+                return PID_CHECK_EMPTY
+            pid = int(pid_str)
+        except (IOError, ValueError) as exc:
+            self.close(fh=fh)
+            raise PidFileUnreadableError(exc)
+        else:
+            if self.pid == pid:
+                self.close(fh=fh, cleanup=False)
+                return PID_CHECK_SAMEPID
+
+        p = psutil.Process(pid)
+        if not p.is_running():
+            self.close(fh=fh)
+            return PID_CHECK_CLEAN
+
+        if (time.time() - p.create_time()) > timeout:
+            self.close(fh=fh)
+            return PID_CHECK_CLEAN
+
+        self.close(fh=fh, cleanup=False)
 
     def create(self):
         self.setup()
